@@ -19,6 +19,7 @@ fileprivate var _onError:ErrorCallback!
 fileprivate var _target:UIViewController?
 fileprivate var _payer:EdfaPgPayer!
 fileprivate var _order:EdfaPgSaleOrder!
+fileprivate var _card:EdfaPgCard!
 
 // https://github.com/card-io/card.io-iOS-SDK
 // https://github.com/orazz/CreditCardForm-iOS
@@ -48,21 +49,9 @@ class CardDetailViewController : UIViewController {
     @IBOutlet weak var lblAmount: UILabel!
     @IBOutlet weak var lblCurrency: UILabel!
     
-    private lazy var saleAdapter: EdfaPgSaleAdapter = {
-        let adapter = EdfaPgAdapterFactory().createSale()
-        adapter.delegate = self
-        return adapter
-    }()
-    
     private lazy var getTransactionStatusAdapter: EdfaPgGetTransactionStatusAdapter = {
         let adapter = EdfaPgAdapterFactory().createGetTransactionStatus()
-        adapter.delegate = self
-        return adapter
-    }()
-    
-    private lazy var getTransactionDetailAdapter: EdfaPgGetTransactionDetailsAdapter = {
-        let adapter = EdfaPgAdapterFactory().createGetTransactionDetails()
-        adapter.delegate = self
+//        adapter.delegate = self
         return adapter
     }()
     
@@ -107,7 +96,18 @@ class CardDetailViewController : UIViewController {
     
     
     @IBAction func btnSubmit(_ sender: Any) {
-        self.doSaleTransaction()
+        guard  let number = cardNumberFormatter.unformat(txtCardNumber.text),
+               let cvv = cardCVVFormatter.unformat(txtCardCVV.text),
+               let expiryYear = cardxExpiry().year,
+               let expiryMonth = cardxExpiry().month else {
+            return
+        }
+        
+        _cardNumber = number.replacingOccurrences(of: " ", with: "")
+        
+        _card = EdfaPgCard(number: number, expireMonth: Int(expiryMonth), expireYear: Int(expiryYear + 2000), cvv: cvv)
+    
+        EdfaCardPayTransaction(target: self).doSaleTransaction()
     }
     
     @IBAction func nameTextChanged(_ sender: UITextField) {
@@ -238,16 +238,13 @@ class CardDetailViewController : UIViewController {
 }
 
 
-
-extension CardDetailViewController : EdfaPgAdapterDelegate{
-    func willSendRequest(_ request: EdfaPgDataRequest) {
-        
-    }
+class EdfaCardPayTransaction {
     
-    func didReceiveResponse(_ reponse: EdfaPgDataResponse?) {
-        
-    }
+    public let target: UIViewController
     
+    public init(target: UIViewController){
+        self.target = target
+    }
     
     func doSaleTransaction(){
         
@@ -256,7 +253,7 @@ extension CardDetailViewController : EdfaPgAdapterDelegate{
 //                                                 birthdate: Foundation.Date.formatter.date(from: tfPayerBirthday.text ?? ""),
 //                                                 address2: tfPayerAddress2.text,
 //                                                 state: tfPayerState.text)
-//        
+//
 //        let payer = EdfaPgPayer(firstName: tfPayerFirstName.text ?? "",
 //                                   lastName: tfPayerLastName.text ?? "",
 //                                   address: tfPayerAddress.text ?? "",
@@ -267,31 +264,24 @@ extension CardDetailViewController : EdfaPgAdapterDelegate{
 //                                   phone: tfPayerPhone.text ?? "",
 //                                   ip: tfPayerIpAddress.text ?? "",
 //                                   options: payerOptions)
-//        
+//
 //        let saleOptions = EdfaPgSaleOptions(channelId: tfChannelId.text,
 //                                               recurringInit: swtInitRecurringSale.isOn)
-//        
+//
 //        let transaction = EdfaPgTransactionStorage.Transaction(payerEmail: payer.email,
 //                                                                  cardNumber: card.number)
         
-        guard  let number = cardNumberFormatter.unformat(txtCardNumber.text),
-               let cvv = cardCVVFormatter.unformat(txtCardCVV.text),
-               let expiryYear = cardxExpiry().year,
-               let expiryMonth = cardxExpiry().month else {
-            return
-        }
-        
-        _cardNumber = number.replacingOccurrences(of: " ", with: "")
-        
-        
-        let _card = EdfaPgCard(number: number, expireMonth: Int(expiryMonth), expireYear: Int(expiryYear + 2000), cvv: cvv)
-        
-        
         let saleOptions:EdfaPgSaleOptions? = nil //EdfaPgSaleOptions(channelId: "", recurringInit: false)
         
-        showLoading()
+//        showLoading()
+        
+         lazy var saleAdapter: EdfaPgSaleAdapter = {
+            let adapter = EdfaPgAdapterFactory().createSale()
+            return adapter
+        }()
+        
         saleAdapter.execute(order: _order,
-                            card: _card,
+                            card: _card!,
                             payer: _payer,
                             termUrl3ds: EdfaPgProcessCompleteCallbackUrl,
                             options: saleOptions,
@@ -343,7 +333,6 @@ extension CardDetailViewController : EdfaPgAdapterDelegate{
         }
     }
     
-    
     func openRedirect3Ds(termUrl: String,
                          termUrl3Ds: String,
                          redirectUrl: String,
@@ -377,7 +366,7 @@ extension CardDetailViewController : EdfaPgAdapterDelegate{
                 
             })
             .enableLogs()
-            .show(owner: self, onStartIn: { viewController in
+            .show(owner: self.target, onStartIn: { viewController in
                 print("onStart: \(viewController)")
                 
             }, onError: { error in
@@ -390,6 +379,12 @@ extension CardDetailViewController : EdfaPgAdapterDelegate{
     func checkTransactionStatus(saleResponse:EdfaPgResponse<EdfaPgSaleResult>, transactionId:String){
         print("Checking transaction status for transaction id: \(transactionId)")
         if let cardNumber = _cardNumber, let txn = _txnId{
+            
+            lazy var getTransactionDetailAdapter: EdfaPgGetTransactionDetailsAdapter = {
+                let adapter = EdfaPgAdapterFactory().createGetTransactionDetails()
+                return adapter
+            }()
+            
             getTransactionDetailAdapter.execute(
                 transactionId: txn,
                 payerEmail: _payer.email,
@@ -422,7 +417,6 @@ extension CardDetailViewController : EdfaPgAdapterDelegate{
     }
 }
 
-
 public class EdfaCardPay{
     
     public init() {}
@@ -439,9 +433,11 @@ public class EdfaCardPay{
         return vc
     }
     
+    
     class public func viewController(target:UIViewController,
                                           payer:EdfaPgPayer,
                                           order:EdfaPgSaleOrder,
+                                          card:EdfaPgCard,
                                           transactionSuccess:@escaping TransactionCallback,
                                           transactionFailure:@escaping TransactionCallback,
                                           onError:@escaping ErrorCallback,
@@ -449,6 +445,7 @@ public class EdfaCardPay{
             _target = target
             _payer = payer
             _order = order
+            _card = card
             _onTransactionSuccess = transactionSuccess
             _onTransactionFailure = transactionFailure
             _onError = onError
@@ -462,11 +459,16 @@ public class EdfaCardPay{
 // Payment Properties Setters
 extension EdfaCardPay{
     
-    public func initialize(target:UIViewController, onError:@escaping ErrorCallback, onPresent:(() ->Void)?) -> UIViewController{
+    public func initialize(target:UIViewController, onError:@escaping ErrorCallback, onPresent:(() ->Void)?) -> UIViewController? {
         _target = target
         _onError = onError
         _onPresent = onPresent
-        return start()
+        if(_card == nil){
+            return start()
+        }else{
+            EdfaCardPayTransaction(target: target).doSaleTransaction()
+            return nil
+        }
     }
     
     public func on(transactionSuccess:@escaping TransactionCallback) -> EdfaCardPay{
@@ -486,6 +488,11 @@ extension EdfaCardPay{
     
     public func set(order:EdfaPgSaleOrder) -> EdfaCardPay{
         _order = order
+        return self
+    }
+    
+    public func set(card:EdfaPgCard) -> EdfaCardPay{
+        _card = card
         return self
     }
 }

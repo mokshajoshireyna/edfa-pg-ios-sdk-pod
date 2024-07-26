@@ -37,33 +37,46 @@ public class EdfaPgBaseAdapter<Serivce: Encodable> {
                                            httpMethod: .post,
                                            body: params)
         
-        delegate?.willSendRequest(request)
+//        delegate?.willSendRequest(request)
         
         return apiClient.send(request) { [weak self] in
+            print("send")
+            print(self == nil)
             self?.parseResponse($0, callback: callback)
         }
     }
     
     private func parseResponse<T: Decodable>(_ response: EdfaPgDataResponse, callback: @escaping EdfaPgCallback<T>) {
+        print("parseResponse")
         if let data = response.data {
+            print("1")
             do {
+                print("2")
                 callback(.error(try JSONDecoder().decode(EdfaPgError.self, from: data)))
            
             } catch {
+                print("3")
                 do {
+                    print("4")
                     let a: T = try JSONDecoder().decode(T.self, from: data)
+                    print("5")
+                    print(a)
                     callback(.result(a))
                     
                 } catch {
+                    print("6")
                     callback(.failure(error))
                 }
             }
             
         } else {
+            print("7")
             callback(.failure(response.error ?? NSError(domain: "Server error", code: 0, userInfo: nil)))
         }
         
-        delegate?.didReceiveResponse(response)
+        print("8")
+        
+//        delegate?.didReceiveResponse(response)
     }
 }
 
