@@ -19,6 +19,7 @@ fileprivate var _onError:ErrorCallback!
 fileprivate var _target:UIViewController?
 fileprivate var _payer:EdfaPgPayer!
 fileprivate var _order:EdfaPgSaleOrder!
+fileprivate var _card:EdfaPgCard!
 
 // https://github.com/card-io/card.io-iOS-SDK
 // https://github.com/orazz/CreditCardForm-iOS
@@ -88,6 +89,10 @@ class CardDetailViewController : UIViewController {
         if let _onPresent = onPresent{
             _onPresent()
         }
+        
+        if(_card != nil){
+            self.doSaleTransaction()
+        }
     }
     
     func setupFormatters(){
@@ -103,8 +108,6 @@ class CardDetailViewController : UIViewController {
         txtCardCVV.delegate = cardCVVInputController
         txtCardCVV.text = cardCVVFormatter.format("")
     }
-    
-    
     
     @IBAction func btnSubmit(_ sender: Any) {
         self.doSaleTransaction()
@@ -250,43 +253,25 @@ extension CardDetailViewController : EdfaPgAdapterDelegate{
     
     
     func doSaleTransaction(){
-        
-        
-//        let payerOptions = EdfaPgPayerOptions(middleName: tfPayerMiddleName.text,
-//                                                 birthdate: Foundation.Date.formatter.date(from: tfPayerBirthday.text ?? ""),
-//                                                 address2: tfPayerAddress2.text,
-//                                                 state: tfPayerState.text)
-//        
-//        let payer = EdfaPgPayer(firstName: tfPayerFirstName.text ?? "",
-//                                   lastName: tfPayerLastName.text ?? "",
-//                                   address: tfPayerAddress.text ?? "",
-//                                   country: tfPayerCountryCode.text ?? "",
-//                                   city: tfPayerCity.text ?? "",
-//                                   zip: tfPayerZip.text ?? "",
-//                                   email: tfPayerEmail.text ?? "",
-//                                   phone: tfPayerPhone.text ?? "",
-//                                   ip: tfPayerIpAddress.text ?? "",
-//                                   options: payerOptions)
-//        
-//        let saleOptions = EdfaPgSaleOptions(channelId: tfChannelId.text,
-//                                               recurringInit: swtInitRecurringSale.isOn)
-//        
-//        let transaction = EdfaPgTransactionStorage.Transaction(payerEmail: payer.email,
-//                                                                  cardNumber: card.number)
-        
-        guard  let number = cardNumberFormatter.unformat(txtCardNumber.text),
-               let cvv = cardCVVFormatter.unformat(txtCardCVV.text),
-               let expiryYear = cardxExpiry().year,
-               let expiryMonth = cardxExpiry().month else {
-            return
+        if(_card == nil){
+            guard  let number = cardNumberFormatter.unformat(txtCardNumber.text),
+                   let cvv = cardCVVFormatter.unformat(txtCardCVV.text),
+                   let expiryYear = cardxExpiry().year,
+                   let expiryMonth = cardxExpiry().month else {
+                return
+            }
+            
+            _cardNumber = number.replacingOccurrences(of: " ", with: "")
+            
+            _card = EdfaPgCard(number: number, expireMonth: Int(expiryMonth), expireYear: Int(expiryYear + 2000), cvv: cvv)
+            
+            apiCall()
+        }else{
+            apiCall()
         }
-        
-        _cardNumber = number.replacingOccurrences(of: " ", with: "")
-        
-        
-        let _card = EdfaPgCard(number: number, expireMonth: Int(expiryMonth), expireYear: Int(expiryYear + 2000), cvv: cvv)
-        
-        
+    }
+    
+    func apiCall(){
         let saleOptions:EdfaPgSaleOptions? = nil //EdfaPgSaleOptions(channelId: "", recurringInit: false)
         
         showLoading()
@@ -442,6 +427,7 @@ public class EdfaCardPay{
     class public func viewController(target:UIViewController,
                                           payer:EdfaPgPayer,
                                           order:EdfaPgSaleOrder,
+                                          card:EdfaPgCard,
                                           transactionSuccess:@escaping TransactionCallback,
                                           transactionFailure:@escaping TransactionCallback,
                                           onError:@escaping ErrorCallback,
@@ -449,6 +435,7 @@ public class EdfaCardPay{
             _target = target
             _payer = payer
             _order = order
+            _card = card
             _onTransactionSuccess = transactionSuccess
             _onTransactionFailure = transactionFailure
             _onError = onError
@@ -486,6 +473,11 @@ extension EdfaCardPay{
     
     public func set(order:EdfaPgSaleOrder) -> EdfaCardPay{
         _order = order
+        return self
+    }
+    
+    public func set(card:EdfaPgCard) -> EdfaCardPay{
+        _card = card
         return self
     }
 }
